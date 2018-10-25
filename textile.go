@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	icore "gx/ipfs/Qmb8jW1F6ZVyYPW1epc2GFRipmd3S8tJ48pZKBVPzVqj9T/go-ipfs/core"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -64,8 +65,8 @@ type CafeOptions struct {
 	ReferralKey string `long:"cafe-referral-key" description:"set the cafe referral key"`
 
 	// Slack hook url settings
-	SlackHook        string `short:"s" long:"slack-hook" description:"set the slack post hook url"`
-	WelcomeImagePath string `long:"welcome-image" description:"specify a welcome image to post to all threads on start"`
+	SlackHook    string `short:"s" long:"slack-hook" description:"set the slack post hook url"`
+	SkipAnnounce bool   `long:"skip-announce" description:"turn off the default welcome image sent to all threads on start"`
 }
 
 type Options struct{}
@@ -310,7 +311,7 @@ func (x *DaemonCommand) Execute(args []string) error {
 		return err
 	}
 	printSplashScreen(x.Cafe, true)
-	welcomeSlackMessage(x.Cafe, true)
+	welcomeSlackMessage(x.Cafe)
 
 	// handle interrupt
 	quit := make(chan os.Signal)
@@ -332,7 +333,7 @@ func (x *ShellCommand) Execute(args []string) error {
 		return err
 	}
 	printSplashScreen(x.Cafe, false)
-	welcomeSlackMessage(x.Cafe, false)
+	welcomeSlackMessage(x.Cafe)
 
 	// run the shell
 	cmd.RunShell(func() error {
@@ -369,7 +370,8 @@ func threadIntegrationUpdate(update thread.Update, cafeURL string, hookURL strin
 	}
 
 	caption := ""
-	var userName string
+	userName := "Textile Bot"
+	iconURL := "https://ipfs.io/ipfs/QmcNzGMQ1hUzSnqM2aH1Um8KWLRC4Rd9TyY4kFuYZXWXaF/Textile_Icon_500x500.png"
 	block := update.Block
 
 	authorID, err := ipfs.IdFromEncodedPublicKey(block.AuthorPk)
@@ -391,8 +393,7 @@ func threadIntegrationUpdate(update thread.Update, cafeURL string, hookURL strin
 			return err
 		}
 		userName = string(userNameBytes)
-	} else {
-		userName = authorID.Pretty()[:8]
+		iconURL = fmt.Sprintf("%s/ipns/%s/avatar", cafeURL, authorID.Pretty())
 	}
 
 	// Get photo/data id for creating cafe api url
@@ -410,10 +411,10 @@ func threadIntegrationUpdate(update thread.Update, cafeURL string, hookURL strin
 	// Create photo attachment for slack post
 	attachment := &Attachment{
 		Fallback:   "A photo posted from the Textile Photos app.",
-		AuthorName: "TextilePhotos",
+		AuthorName: "Textile Photos",
 		AuthorLink: "https://textile.photos/",
 		AuthorIcon: "https://www.textile.photos/statics/images/favicon/favicon-32x32.png",
-		Title:      "Photo from app",
+		Title:      "View Photo",
 		TitleLink:  imageURL,
 		Text:       caption,
 		ImageURL:   imageURL,
@@ -425,7 +426,7 @@ func threadIntegrationUpdate(update thread.Update, cafeURL string, hookURL strin
 		Username:    userName,
 		Text:        fmt.Sprintf("added a photo to *'%s*'", update.ThreadName),
 		Markdown:    true,
-		IconURL:     fmt.Sprintf("%s/ipns/%s/avatar", cafeURL, authorID.Pretty()),
+		IconURL:     iconURL,
 		Attachments: []*Attachment{attachment},
 	}
 
@@ -643,25 +644,65 @@ func printSplashScreen(cafeOpts CafeOptions, daemon bool) {
 	}
 }
 
-func welcomeSlackMessage(cafeOpts CafeOptions, daemon bool) {
-	path, err := homedir.Expand(cafeOpts.WelcomeImagePath)
-	if err != nil || path == "" {
+// downloadFile will download a url to a local file. It's efficient because it will
+// write as it downloads and not load the whole file into memory.
+func downloadFile(filepath string, url string) error {
+
+	// Create the file
+	out, err := os.Create(filepath)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	// Get the data
+	resp, err := http.Get(url)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	// Write the body to file
+	_, err = io.Copy(out, resp.Body)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func welcomeSlackMessage(cafeOpts CafeOptions) {
+	if cafeOpts.SkipAnnounce || (cafeOpts.SlackHook == "" || cafeOpts.Addr == "") {
 		return
 	}
 
+	fileName := "./slackbot.png"
+
+	// Check if we've already downloaded the image
+	if _, err := os.Stat(fileName); os.IsNotExist(err) {
+		// Download the image
+		fileURL := "https://ipfs.io/ipfs/QmXY7wQQcBMAM3RWHHJ9ESPjw5ihVuyEtX66nmzVQF1jgL/slackbot.png"
+
+		err := downloadFile(fileName, fileURL)
+		if err != nil {
+			fmt.Println("unable to post welcome image, error downloading file.")
+			return
+		}
+	}
+
 	// open the file
-	f, err := os.Open(path)
+	f, err := os.Open(fileName)
 	if err != nil {
 		fmt.Println("unable to post welcome image, error opening file.")
 		return
 	}
 	defer f.Close()
 
-	caption := "Hi, I'm the Textile Photos slackbot. I'm going to post your photos to Slack."
+	caption := "Hi! Just letting you know a bot has been added by\na Thread member to sync posts to Slack."
 
 	// do the add
 	f.Seek(0, 0)
-	added, err := core.Node.AddPhoto(path)
+	added, err := core.Node.AddPhoto(fileName)
 	if err != nil {
 		return
 	}
