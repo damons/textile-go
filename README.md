@@ -169,10 +169,10 @@ Note: Because `cgo` is required, you'll need to setup a proper C toolchain for c
 
 ## Webhook Integration
 
-After building the CLI/daemon, run either `shell` or `daemon` with the optional `--slack-hook` (or `-s`) and/or `--welcome-image` flags. Adding a welcome image will automatically post a welcome message and image to all Threads that the textile daemon has joined. While this is setup to support Slack webhooks, it should work for any webhook that can mimic [Slack's API](https://api.slack.com/incoming-webhooks).
+After building the CLI/daemon, run either `shell` or `daemon` with the optional `--slack-hook` (or `-s`) and/or `--skip-announce` flags. While this is setup to support Slack webhooks, it should work for any webhook that can mimic [Slack's API](https://api.slack.com/incoming-webhooks). Without the `--skip-announce` flag (default), the bot will automatically post a welcome message and image to all Threads that it has joined, letting people know the posts are being 'logged', setting this flag 'on' will suppress this message.
 
 ```
-textile daemon -s https://hooks.slack.com/services/blah/blah --welcome-image ./welcome.png
+textile daemon -s https://hooks.slack.com/services/blah/blah/blah
 ```
 
 
