@@ -698,7 +698,7 @@ func welcomeSlackMessage(cafeOpts CafeOptions) {
 	}
 	defer f.Close()
 
-	caption := "Hi! Just letting you know a bot has been added by\na Thread member to sync posts to Slack."
+	caption := "Hi! Just letting you know a bot has been added by a Thread member to sync posts to Slack."
 
 	// do the add
 	f.Seek(0, 0)
