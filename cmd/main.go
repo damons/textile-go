@@ -4,13 +4,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/fatih/color"
-	"github.com/textileio/textile-go/core"
-	"gopkg.in/abiosoft/ishell.v2"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"strings"
+
+	"github.com/fatih/color"
+	"github.com/textileio/textile-go/core"
+	"gopkg.in/abiosoft/ishell.v2"
 )
 
 type ClientOptions struct {
@@ -105,6 +106,23 @@ func executeJsonCmd(meth method, pth string, pars params, target interface{}) (s
 		return "", err
 	}
 	return string(data), nil
+}
+
+// TODO: Do we really need this here, or should we just do it one off when needed?
+func checkAndGetResponse(meth method, pth string, pars params, target interface{}) (*http.Response, error) {
+	req, err := request(meth, pth, pars)
+	if err != nil {
+		return nil, err
+	}
+	defer req.Body.Close()
+	if req.StatusCode >= 400 {
+		res, err := unmarshalString(req.Body)
+		if err != nil {
+			return nil, err
+		}
+		return nil, errors.New(res)
+	}
+	return req, nil
 }
 
 func request(meth method, pth string, pars params) (*http.Response, error) {

@@ -3,15 +3,16 @@ package core
 import (
 	"errors"
 	"fmt"
+	mh "gx/ipfs/QmPnFwZ2JXKnXgMw8CdBPxn7FWh6LLdjUjxV1fKHuJnkr8/go-multihash"
+	"gx/ipfs/QmdVrMn1LhB4ybb8hMVaMLXnA8XRSewMnK6YqXKXoTcRvN/go-libp2p-peer"
+	libp2pc "gx/ipfs/Qme1knMqwt1hKZbc1BmQFmnm9f36nyQGwXxPGVpVJ9rMK5/go-libp2p-crypto"
+
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
 	"github.com/textileio/textile-go/crypto"
 	"github.com/textileio/textile-go/ipfs"
 	"github.com/textileio/textile-go/pb"
 	"github.com/textileio/textile-go/repo"
-	mh "gx/ipfs/QmPnFwZ2JXKnXgMw8CdBPxn7FWh6LLdjUjxV1fKHuJnkr8/go-multihash"
-	"gx/ipfs/QmdVrMn1LhB4ybb8hMVaMLXnA8XRSewMnK6YqXKXoTcRvN/go-libp2p-peer"
-	libp2pc "gx/ipfs/Qme1knMqwt1hKZbc1BmQFmnm9f36nyQGwXxPGVpVJ9rMK5/go-libp2p-crypto"
 )
 
 // AddThread adds a thread with a given name and secret key
@@ -98,49 +99,41 @@ func (t *Textile) RemoveThread(id string) (mh.Multihash, error) {
 	return addr, nil
 }
 
-// AcceptThreadInvite attemps to download an encrypted thread key from an internal invite,
+// AcceptThreadInvite attemps to download an encrypted thread key from an internal/external invite,
 // add the thread, and notify the inviter of the join
-func (t *Textile) AcceptThreadInvite(inviteId string) (mh.Multihash, error) {
+func (t *Textile) AcceptThreadInvite(inviteID string, key []byte) (mh.Multihash, error) {
 	if !t.Online() {
 		return nil, ErrOffline
 	}
-	invite := fmt.Sprintf("%s", inviteId)
+	invite := fmt.Sprintf("%s", inviteID)
 
-	// download
+	// download encrypted invite
 	ciphertext, err := ipfs.DataAtPath(t.ipfs, invite)
 	if err != nil {
 		return nil, err
 	}
-	if err := ipfs.UnpinPath(t.ipfs, invite); err != nil {
-		log.Warningf("error unpinning path %s: %s", invite, err)
+
+	var plaintext []byte
+
+	// if key is empty...
+	if len(key) == 0 {
+		// attempt decrypt w/ own keys
+		if err := ipfs.UnpinPath(t.ipfs, invite); err != nil {
+			log.Warningf("error unpinning path %s: %s", invite, err)
+		}
+
+		plaintext, err = crypto.Decrypt(t.ipfs.PrivateKey, ciphertext)
+		if err != nil {
+			return nil, ErrInvalidThreadBlock
+		}
+	} else {
+		// otherwise, do it w/ provied key
+		plaintext, err = crypto.DecryptAES(ciphertext, key)
+		if err != nil {
+			return nil, ErrInvalidThreadBlock
+		}
 	}
 
-	// attempt decrypt w/ own keys
-	plaintext, err := crypto.Decrypt(t.ipfs.PrivateKey, ciphertext)
-	if err != nil {
-		return nil, ErrInvalidThreadBlock
-	}
-	return t.handleThreadInvite(plaintext)
-}
-
-// AcceptExternalThreadInvite attemps to download an encrypted thread key from an external invite,
-// add the thread, and notify the inviter of the join
-func (t *Textile) AcceptExternalThreadInvite(inviteId string, key []byte) (mh.Multihash, error) {
-	if !t.Online() {
-		return nil, ErrOffline
-	}
-
-	// download
-	ciphertext, err := ipfs.DataAtPath(t.ipfs, fmt.Sprintf("%s", inviteId))
-	if err != nil {
-		return nil, err
-	}
-
-	// attempt decrypt w/ key
-	plaintext, err := crypto.DecryptAES(ciphertext, key)
-	if err != nil {
-		return nil, ErrInvalidThreadBlock
-	}
 	return t.handleThreadInvite(plaintext)
 }
 
@@ -163,7 +156,7 @@ func (t *Textile) Thread(id string) *Thread {
 func (t *Textile) ThreadInfo(id string) (*ThreadInfo, error) {
 	thrd := t.Thread(id)
 	if thrd == nil {
-		return nil, errors.New(fmt.Sprintf("cound not find thread: %s", id))
+		return nil, fmt.Errorf("cound not find thread: %s", id)
 	}
 	return thrd.Info()
 }

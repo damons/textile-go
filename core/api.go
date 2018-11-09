@@ -2,10 +2,12 @@ package core
 
 import (
 	"context"
-	"github.com/gin-gonic/gin"
 	"gx/ipfs/QmdVrMn1LhB4ybb8hMVaMLXnA8XRSewMnK6YqXKXoTcRvN/go-libp2p-peer"
 	"net/http"
 	"strings"
+	"time"
+
+	"github.com/gin-gonic/gin"
 )
 
 // apiVersion is the api version
@@ -67,6 +69,11 @@ func (a *api) Start() {
 		v0.GET("/threads", a.lsThreads)
 		v0.GET("/threads/:id", a.getThreads)
 		v0.DELETE("/threads/:id", a.rmThreads)
+		// TODO: Maybe use PATCH("/threads") for joins?
+		v0.POST("/threads/join", a.joinThreads)
+		// TODO: Maybe find a diff route that doesn't require 'thread' (singular)
+		v0.POST("/thread/:id/invite", a.inviteThreads)
+		v0.GET("/thread/:id/stream", a.streamThreads)
 
 		v0.POST("/images", a.addImages)
 
@@ -106,9 +113,11 @@ func (a *api) Start() {
 
 // Stop stops the http api
 func (a *api) Stop() error {
-	ctx, cancel := context.WithCancel(context.Background())
+	// Use timeout to force a deadline
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	if err := a.server.Shutdown(ctx); err != nil {
 		log.Errorf("error shutting down api: %s", err)
+		cancel() // TODO: Not sure if this is right, linter was complaining
 		return err
 	}
 	cancel()

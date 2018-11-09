@@ -3,8 +3,9 @@ package core
 import (
 	"errors"
 	"fmt"
-	"github.com/textileio/textile-go/repo"
 	mh "gx/ipfs/QmPnFwZ2JXKnXgMw8CdBPxn7FWh6LLdjUjxV1fKHuJnkr8/go-multihash"
+
+	"github.com/textileio/textile-go/repo"
 )
 
 // Notifications lists notifications
@@ -39,7 +40,7 @@ func (t *Textile) AcceptThreadInviteViaNotification(id string) (mh.Multihash, er
 	}
 
 	// block is the invite's block id
-	hash, err := t.AcceptThreadInvite(notification.BlockId)
+	hash, err := t.AcceptThreadInvite(notification.BlockId, []byte{})
 	if err != nil {
 		return nil, err
 	}

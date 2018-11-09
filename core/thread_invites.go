@@ -1,12 +1,21 @@
 package core
 
 import (
+	mh "gx/ipfs/QmPnFwZ2JXKnXgMw8CdBPxn7FWh6LLdjUjxV1fKHuJnkr8/go-multihash"
+	"gx/ipfs/QmdVrMn1LhB4ybb8hMVaMLXnA8XRSewMnK6YqXKXoTcRvN/go-libp2p-peer"
+
 	"github.com/textileio/textile-go/crypto"
 	"github.com/textileio/textile-go/pb"
 	"github.com/textileio/textile-go/repo"
-	mh "gx/ipfs/QmPnFwZ2JXKnXgMw8CdBPxn7FWh6LLdjUjxV1fKHuJnkr8/go-multihash"
-	"gx/ipfs/QmdVrMn1LhB4ybb8hMVaMLXnA8XRSewMnK6YqXKXoTcRvN/go-libp2p-peer"
 )
+
+// ExternalInvite is a wrapper around an invite id and key
+// Copied from mobile/threads.go
+type InviteInfo struct {
+	Id      string `json:"id"`
+	Key     string `json:"key,omitempty"`
+	Inviter string `json:"inviter"`
+}
 
 // AddInvite creates an outgoing invite block, which is sent directly to the recipient
 // and does not become part of the hash chain

@@ -1,12 +1,17 @@
 package cmd
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"gx/ipfs/QmdVrMn1LhB4ybb8hMVaMLXnA8XRSewMnK6YqXKXoTcRvN/go-libp2p-peer"
+	"io"
+	"mime/multipart"
+
 	"github.com/fatih/color"
 	"github.com/textileio/textile-go/core"
 	"gopkg.in/abiosoft/ishell.v2"
-	"gx/ipfs/QmdVrMn1LhB4ybb8hMVaMLXnA8XRSewMnK6YqXKXoTcRvN/go-libp2p-peer"
 )
 
 var errMissingThreadId = errors.New("missing thread id")
@@ -16,10 +21,13 @@ func init() {
 }
 
 type threadsCmd struct {
-	Add    addThreadsCmd `command:"add"`
-	List   lsThreadsCmd  `command:"ls"`
-	Get    getThreadsCmd `command:"get"`
-	Remove rmThreadsCmd  `command:"rm"`
+	Add    addThreadsCmd    `command:"add"`
+	List   lsThreadsCmd     `command:"ls"`
+	Get    getThreadsCmd    `command:"get"`
+	Remove rmThreadsCmd     `command:"rm"`
+	Join   joinThreadsCmd   `command:"join"`
+	Invite inviteThreadsCmd `command:"invite"`
+	Stream streamThreadsCmd `command:"stream"`
 }
 
 func (x *threadsCmd) Name() string {
@@ -33,7 +41,8 @@ func (x *threadsCmd) Short() string {
 func (x *threadsCmd) Long() string {
 	return `
 Threads are distributed sets of files between peers. 
-Use this command to add, list, get, and remove threads.
+Use this command to add, list, get, join, invite, and remove threads.
+You can also stream thread events.
 `
 }
 
@@ -47,7 +56,128 @@ func (x *threadsCmd) Shell() *ishell.Cmd {
 	cmd.AddCmd((&lsThreadsCmd{}).Shell())
 	cmd.AddCmd((&getThreadsCmd{}).Shell())
 	cmd.AddCmd((&rmThreadsCmd{}).Shell())
+	cmd.AddCmd((&joinThreadsCmd{}).Shell())
+	cmd.AddCmd((&inviteThreadsCmd{}).Shell())
+	cmd.AddCmd((&streamThreadsCmd{}).Shell())
 	return cmd
+}
+
+type joinThreadsCmd struct {
+	Client ClientOptions `group:"Client Options"`
+}
+
+func (x *joinThreadsCmd) Name() string {
+	return "join"
+}
+
+func (x *joinThreadsCmd) Short() string {
+	return "Join an existing thread via invite"
+}
+
+func (x *joinThreadsCmd) Long() string {
+	return "Joins an existing thread via an internal or external thread invite."
+}
+
+func (x *joinThreadsCmd) Execute(args []string) error {
+	setApi(x.Client)
+	return callJoinThreads(args, nil)
+}
+
+func (x *joinThreadsCmd) Shell() *ishell.Cmd {
+	return &ishell.Cmd{
+		Name:     x.Name(),
+		Help:     x.Short(),
+		LongHelp: x.Long(),
+		Func: func(c *ishell.Context) {
+			if err := callJoinThreads(c.Args, c); err != nil {
+				c.Err(err)
+			}
+		},
+	}
+}
+
+func callJoinThreads(args []string, ctx *ishell.Context) error {
+	if len(args) == 0 {
+		return errMissingThreadId
+	}
+
+	var body bytes.Buffer
+	if len(args) == 2 {
+		writer := multipart.NewWriter(&body)
+		if err := writer.WriteField("key", args[1]); err != nil {
+			return err
+		}
+		writer.Close()
+	}
+	var info *core.ThreadInfo
+	res, err := executeJsonCmd(POST, "threads/join", params{
+		args:    []string{args[0]},
+		payload: &body,
+	}, &info)
+	if err != nil {
+		return err
+	}
+	output(res, ctx)
+	return nil
+}
+
+type inviteThreadsCmd struct {
+	Client ClientOptions `group:"Client Options"`
+}
+
+func (x *inviteThreadsCmd) Name() string {
+	return "invite"
+}
+
+func (x *inviteThreadsCmd) Short() string {
+	return "Create an invite to an existing thread"
+}
+
+func (x *inviteThreadsCmd) Long() string {
+	return "Create an existing or peer-specific invite to an existing thread."
+}
+
+func (x *inviteThreadsCmd) Execute(args []string) error {
+	setApi(x.Client)
+	return callInviteThreads(args, nil)
+}
+
+func (x *inviteThreadsCmd) Shell() *ishell.Cmd {
+	return &ishell.Cmd{
+		Name:     x.Name(),
+		Help:     x.Short(),
+		LongHelp: x.Long(),
+		Func: func(c *ishell.Context) {
+			if err := callInviteThreads(c.Args, c); err != nil {
+				c.Err(err)
+			}
+		},
+	}
+}
+
+func callInviteThreads(args []string, ctx *ishell.Context) error {
+	if len(args) == 0 {
+		return errMissingThreadId
+	}
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	if len(args) == 2 {
+		if err := writer.WriteField("id", args[1]); err != nil {
+			return err
+		}
+	}
+	writer.Close()
+	var info *core.InviteInfo
+	res, err := executeJsonCmd(POST, "threads/"+args[0]+"/invite", params{
+		payload: &body,
+		ctype:   writer.FormDataContentType(),
+	}, &info)
+	if err != nil {
+		return err
+	}
+	output(res, ctx)
+	return nil
 }
 
 type addThreadsCmd struct {
@@ -231,6 +361,78 @@ func callRmThreads(args []string, ctx *ishell.Context) error {
 	return nil
 }
 
+type streamThreadsCmd struct {
+	Client ClientOptions `group:"Client Options"`
+}
+
+func (x *streamThreadsCmd) Name() string {
+	return "stream"
+}
+
+func (x *streamThreadsCmd) Short() string {
+	return "Steam thread updates"
+}
+
+func (x *streamThreadsCmd) Long() string {
+	return "Streams (prints) stream updates to console."
+}
+
+func (x *streamThreadsCmd) Execute(args []string) error {
+	setApi(x.Client)
+	return callStreamThreads(args, nil)
+}
+
+func (x *streamThreadsCmd) Shell() *ishell.Cmd {
+	return &ishell.Cmd{
+		Name:     x.Name(),
+		Help:     x.Short(),
+		LongHelp: x.Long(),
+		Func: func(c *ishell.Context) {
+			if err := callStreamThreads(c.Args, c); err != nil {
+				c.Err(err)
+			}
+		},
+	}
+}
+
+func callStreamThreads(args []string, ctx *ishell.Context) error {
+	if len(args) == 0 {
+		return errMissingThreadId
+	}
+
+	req, err := request(GET, "thread/"+args[0]+"/stream", params{})
+	if err != nil {
+		return err
+	}
+
+	defer req.Body.Close()
+	if req.StatusCode >= 400 {
+		res, err := unmarshalString(req.Body)
+		if err != nil {
+			return err
+		}
+		return errors.New(res)
+	}
+
+	decoder := json.NewDecoder(req.Body)
+	for {
+		var info core.ThreadUpdate
+		if err := decoder.Decode(&info); err == io.EOF {
+			break
+		} else if err != nil {
+			return err
+		}
+		data, err := json.MarshalIndent(info, "", "    ")
+		if err == io.EOF {
+			break
+		} else if err != nil {
+			return err
+		}
+		output(string(data), ctx)
+	}
+	return nil
+}
+
 //////////////////////////////////////////////////////////////////////////////
 
 func listThreadPeers(c *ishell.Context) {
@@ -342,22 +544,6 @@ func addThreadInvite(c *ishell.Context) {
 	c.Println(green("invite sent!"))
 }
 
-func acceptThreadInvite(c *ishell.Context) {
-	if len(c.Args) == 0 {
-		c.Err(errors.New("missing invite address"))
-		return
-	}
-	blockId := c.Args[0]
-
-	if _, err := core.Node.AcceptThreadInvite(blockId); err != nil {
-		c.Err(err)
-		return
-	}
-
-	green := color.New(color.FgHiGreen).SprintFunc()
-	c.Println(green("ok, accepted"))
-}
-
 func addExternalThreadInvite(c *ishell.Context) {
 	if len(c.Args) == 0 {
 		c.Err(errors.New("missing thread id"))
@@ -379,25 +565,4 @@ func addExternalThreadInvite(c *ishell.Context) {
 
 	green := color.New(color.FgHiGreen).SprintFunc()
 	c.Println(green(fmt.Sprintf("added! creds: %s %s", hash.B58String(), string(key))))
-}
-
-func acceptExternalThreadInvite(c *ishell.Context) {
-	if len(c.Args) == 0 {
-		c.Err(errors.New("missing invite id"))
-		return
-	}
-	id := c.Args[0]
-	if len(c.Args) == 1 {
-		c.Err(errors.New("missing invite key"))
-		return
-	}
-	key := c.Args[1]
-
-	if _, err := core.Node.AcceptExternalThreadInvite(id, []byte(key)); err != nil {
-		c.Err(err)
-		return
-	}
-
-	green := color.New(color.FgHiGreen).SprintFunc()
-	c.Println(green("ok, accepted"))
 }

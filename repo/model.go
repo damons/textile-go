@@ -1,9 +1,10 @@
 package repo
 
 import (
+	"time"
+
 	"github.com/textileio/textile-go/images"
 	"github.com/textileio/textile-go/pb"
-	"time"
 )
 
 type Contact struct {
@@ -85,6 +86,8 @@ func (b BlockType) Description() string {
 		return "LEAVE"
 	case FileBlock:
 		return "FILE"
+	case TextBlock:
+		return "TEXT"
 	case CommentBlock:
 		return "COMMENT"
 	case LikeBlock:
