@@ -69,11 +69,10 @@ func (a *api) Start() {
 		v0.GET("/threads", a.lsThreads)
 		v0.GET("/threads/:id", a.getThreads)
 		v0.DELETE("/threads/:id", a.rmThreads)
-		// TODO: Maybe use PATCH("/threads") for joins?
-		v0.POST("/threads/join", a.joinThreads)
-		// TODO: Maybe find a diff route that doesn't require 'thread' (singular)
-		v0.POST("/thread/:id/invite", a.inviteThreads)
-		v0.GET("/thread/:id/stream", a.streamThreads)
+		v0.GET("/threads/:id/updates", a.streamThreads)
+		v0.POST("/threads/:id/invite", a.inviteThreads)
+		// TODO: Semantics here don't quite work... don't know thread id before joining
+		// v0.POST("/threads/join", a.joinThreads)
 
 		v0.POST("/images", a.addImages)
 
@@ -177,6 +176,27 @@ func (a *api) readArgs(g *gin.Context) ([]string, error) {
 		}
 	}
 	return args, nil
+}
+
+func (a *api) readOpts(g *gin.Context) (map[string]string, error) {
+	header := g.Request.Header.Get("X-Textile-Opts")
+	opts := make(map[string]string)
+	for _, o := range strings.Split(header, ",") {
+		opt := strings.TrimSpace(o)
+		if opt != "" {
+			parts := strings.Split(opt, "=")
+			if len(parts) == 2 {
+				// If we've already seen this argument, create an array of args?
+				// TODO: Is this a good idea? Maybe better way to deal with list-based args?
+				if _, ok := opts[parts[0]]; ok {
+					opts[parts[0]] += "," + parts[1]
+				} else {
+					opts[parts[0]] = parts[1]
+				}
+			}
+		}
+	}
+	return opts, nil
 }
 
 func (a *api) abort500(g *gin.Context, err error) {

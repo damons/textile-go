@@ -27,7 +27,7 @@ type threadsCmd struct {
 	Remove rmThreadsCmd     `command:"rm"`
 	Join   joinThreadsCmd   `command:"join"`
 	Invite inviteThreadsCmd `command:"invite"`
-	Stream streamThreadsCmd `command:"stream"`
+	Stream streamThreadsCmd `command:"updates"`
 }
 
 func (x *threadsCmd) Name() string {
@@ -42,7 +42,7 @@ func (x *threadsCmd) Long() string {
 	return `
 Threads are distributed sets of files between peers. 
 Use this command to add, list, get, join, invite, and remove threads.
-You can also stream thread events.
+You can also stream thread updates.
 `
 }
 
@@ -363,10 +363,11 @@ func callRmThreads(args []string, ctx *ishell.Context) error {
 
 type streamThreadsCmd struct {
 	Client ClientOptions `group:"Client Options"`
+	Type   string        `short:"t" long:"type" description:"Type of update to monitor. Maybe be used multiple times. If left out (or *), all types are included." default:"*"`
 }
 
 func (x *streamThreadsCmd) Name() string {
-	return "stream"
+	return "updates"
 }
 
 func (x *streamThreadsCmd) Short() string {
@@ -379,28 +380,20 @@ func (x *streamThreadsCmd) Long() string {
 
 func (x *streamThreadsCmd) Execute(args []string) error {
 	setApi(x.Client)
-	return callStreamThreads(args, nil)
+	opts := map[string]string{"type": x.Type}
+	return callStreamThreads(args, opts, nil)
 }
 
 func (x *streamThreadsCmd) Shell() *ishell.Cmd {
-	return &ishell.Cmd{
-		Name:     x.Name(),
-		Help:     x.Short(),
-		LongHelp: x.Long(),
-		Func: func(c *ishell.Context) {
-			if err := callStreamThreads(c.Args, c); err != nil {
-				c.Err(err)
-			}
-		},
-	}
+	return nil // Don't support the streaming api via shell
 }
 
-func callStreamThreads(args []string, ctx *ishell.Context) error {
+func callStreamThreads(args []string, opts map[string]string, ctx *ishell.Context) error {
 	if len(args) == 0 {
 		return errMissingThreadId
 	}
 
-	req, err := request(GET, "thread/"+args[0]+"/stream", params{})
+	req, err := request(GET, "threads/"+args[0]+"/updates", params{opts: opts})
 	if err != nil {
 		return err
 	}
@@ -418,12 +411,14 @@ func callStreamThreads(args []string, ctx *ishell.Context) error {
 	for {
 		var info core.ThreadUpdate
 		if err := decoder.Decode(&info); err == io.EOF {
-			break
+			// fmt.Println("EOF")
+			continue
 		} else if err != nil {
 			return err
 		}
 		data, err := json.MarshalIndent(info, "", "    ")
 		if err == io.EOF {
+			fmt.Println("EOF")
 			break
 		} else if err != nil {
 			return err

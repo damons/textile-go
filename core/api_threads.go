@@ -7,7 +7,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
-	"time"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/mr-tron/base58/base58"
@@ -173,45 +173,48 @@ func (a *api) streamThreads(g *gin.Context) {
 		return
 	}
 
-	g.Request.ParseForm()
-	types := g.Request.Form["type"]
+	opts, err := a.readOpts(g)
+	if err != nil {
+		a.abort500(g, err)
+		return
+	}
+	// TODO: This all seems a bit hacky...
+	typesStr := opts["types"]
+	var list []string
+	if typesStr == "" || typesStr == "*" {
+		list = []string{"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"}
+	} else {
+		list = strings.Split(typesStr, ",")
+	}
+	blockTypes := make([]repo.BlockType, len(list))
+	for i, t := range list {
+		val, err := strconv.Atoi(t)
+		if err != nil {
+			continue // We'll just ignore these...
+		}
+		blockTypes[i] = repo.BlockType(val)
+	}
 
-	go func() {
-		block := repo.Block{
-			Id:       "id",
-			Date:     time.Now(),
-			Parents:  []string{},
-			ThreadId: "12D3KooW9vSfCJkR4PofQCHgifRUSXWNZ81FUHiUCytXiuNHTtwi",
-			AuthorId: "authorid",
-			Type:     repo.TextBlock,
-		}
-		update := ThreadUpdate{
-			Block:      block,
-			ThreadId:   "12D3KooW9vSfCJkR4PofQCHgifRUSXWNZ81FUHiUCytXiuNHTtwi",
-			ThreadName: "threadname",
-		}
-
-		for i := 0; i < 50; i++ {
-			a.node.sendThreadUpdate(update)
-			time.Sleep(time.Second * 1)
-		}
-	}()
 	g.Stream(func(w io.Writer) bool {
+		// ThreadUpdateCh is a read-only channel, we can't close it or push to it here.
 		if update, ok := <-a.node.ThreadUpdateCh(); ok {
+			// The channel returns all thread updates, so we'll filter on thread of interest
 			if update.ThreadId == thrd.Id {
-				for _, val := range types {
-					i, err := strconv.Atoi(val)
-					if err != nil {
-						// We'll just ignore these issues
-						continue
-					}
-					if update.Block.Type == repo.BlockType(i) {
+				// For each update type we're interested in...
+				for _, val := range blockTypes {
+					if update.Block.Type == val {
+						// Return pretty JSON. Could use Server-Sent Events.
+						// Former is slightly easier for typical application developers to parse,
+						// while latter enables browsers to consume the stream using EventSource.
+						// TODO: Could add an 'events' endpoint which would be the same but return SSEvents
 						g.IndentedJSON(http.StatusOK, update)
-						return true
+						break // No need to loop all the way through
 					}
 				}
 			}
+			return true
 		}
+		// If the stream is killed on the pub side, we'll need to close this connection.
 		return false
 	})
 }
