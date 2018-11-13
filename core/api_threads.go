@@ -43,8 +43,16 @@ func (a *api) joinThreads(g *gin.Context) {
 }
 
 func (a *api) inviteThreads(g *gin.Context) {
-	id := g.Param("id")
-	thrd := a.node.Thread(id)
+	args, err := a.readArgs(g)
+	if err != nil {
+		a.abort500(g, err)
+		return
+	}
+	if len(args) == 0 {
+		g.String(http.StatusBadRequest, "missing thread id")
+		return
+	}
+	thrd := a.node.Thread(args[0])
 	if thrd == nil {
 		g.String(http.StatusNotFound, "thread not found")
 		return
@@ -54,13 +62,15 @@ func (a *api) inviteThreads(g *gin.Context) {
 	if err == nil {
 		username = peerID.Pretty()
 	}
+
 	var invite InviteInfo
-	type RequestBody struct {
-		ID string `form:"id"`
+	opts, err := a.readOpts(g)
+	if err != nil {
+		a.abort500(g, err)
+		return
 	}
-	reqBody := &RequestBody{}
-	_ = g.Bind(reqBody)
-	if reqBody.ID == "" {
+	peerId := opts["peer"]
+	if peerId == "" {
 		// add it
 		hash, key, err := thrd.AddExternalInvite()
 		if err != nil {
@@ -74,7 +84,7 @@ func (a *api) inviteThreads(g *gin.Context) {
 			Inviter: username,
 		}
 	} else {
-		targetID, err := peer.IDB58Decode(reqBody.ID)
+		targetID, err := peer.IDB58Decode(peerId)
 		if err != nil {
 			a.abort500(g, err)
 			return

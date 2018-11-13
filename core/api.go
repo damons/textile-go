@@ -70,9 +70,8 @@ func (a *api) Start() {
 		v0.GET("/threads/:id", a.getThreads)
 		v0.DELETE("/threads/:id", a.rmThreads)
 		v0.GET("/threads/:id/updates", a.streamThreads)
-		v0.POST("/threads/:id/invite", a.inviteThreads)
-		// TODO: Semantics here don't quite work... don't know thread id before joining
-		// v0.POST("/threads/join", a.joinThreads)
+		v0.POST("/invite/create", a.inviteThreads)
+		v0.POST("/invite/join", a.joinThreads)
 
 		v0.POST("/images", a.addImages)
 

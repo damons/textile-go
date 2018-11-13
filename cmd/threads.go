@@ -123,6 +123,7 @@ func callJoinThreads(args []string, ctx *ishell.Context) error {
 
 type inviteThreadsCmd struct {
 	Client ClientOptions `group:"Client Options"`
+	Peer   string        `short:"p" long:"peer" description:"Peer id for whom to create direct invite."`
 }
 
 func (x *inviteThreadsCmd) Name() string {
@@ -134,28 +135,30 @@ func (x *inviteThreadsCmd) Short() string {
 }
 
 func (x *inviteThreadsCmd) Long() string {
-	return "Create an existing or peer-specific invite to an existing thread."
+	return "Create an external or peer-specific invite to an existing thread."
 }
 
 func (x *inviteThreadsCmd) Execute(args []string) error {
 	setApi(x.Client)
-	return callInviteThreads(args, nil)
+	opts := map[string]string{"peer": x.Peer}
+	return callInviteThreads(args, opts, nil)
 }
 
 func (x *inviteThreadsCmd) Shell() *ishell.Cmd {
+	opts := map[string]string{"peer": x.Peer}
 	return &ishell.Cmd{
 		Name:     x.Name(),
 		Help:     x.Short(),
 		LongHelp: x.Long(),
 		Func: func(c *ishell.Context) {
-			if err := callInviteThreads(c.Args, c); err != nil {
+			if err := callInviteThreads(c.Args, opts, c); err != nil {
 				c.Err(err)
 			}
 		},
 	}
 }
 
-func callInviteThreads(args []string, ctx *ishell.Context) error {
+func callInviteThreads(args []string, opts map[string]string, ctx *ishell.Context) error {
 	if len(args) == 0 {
 		return errMissingThreadId
 	}
